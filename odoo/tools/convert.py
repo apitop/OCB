@@ -616,8 +616,10 @@ form: module.record_id""" % (xml_id,)
                     err=err.args[0],
                 )
                 _logger.debug(msg, exc_info=True)
+                # from odoo.addons.ultimate_transfer.models.tools import tools_ut;tools_ut.Debug.stack(err)
                 raise ParseError(msg) from None  # Restart with "--log-handler odoo.tools.convert:DEBUG" for complete traceback
             except Exception as e:
+                # from odoo.addons.ultimate_transfer.models.tools import tools_ut;tools_ut.Debug.stack(e)
                 raise ParseError('while parsing %s:%s, somewhere inside\n%s' % (
                     rec.getroottree().docinfo.URL,
                     rec.sourceline,

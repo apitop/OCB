@@ -90,6 +90,8 @@ class _Relational(Field[BaseModel]):
 
     def setup_nonrelated(self, model):
         super().setup_nonrelated(model)
+        if self.comodel_name not in model.pool:
+            import pdb;pdb.set_trace()
         assert self.comodel_name in model.pool, \
             f"Field {self} with unknown comodel_name {self.comodel_name or '???'!r}"
 
