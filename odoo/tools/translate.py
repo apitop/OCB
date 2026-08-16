@@ -324,6 +324,8 @@ def translate_xml_node(node, callback, parse, serialize):
 
 
 def parse_xml(text):
+    # échappe les & qui ne font pas partie d'une entité valide
+    text = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
     return etree.fromstring(text)
 
 def serialize_xml(node):
@@ -339,7 +341,14 @@ def xml_term_adapter(term_en):
     XML terms. Using the adapter only makes sense if `term_en` contains some tags
     from TRANSLATED_ELEMENTS.
     """
-    orig_node = parse_xml(f"<div>{term_en}</div>")
+    try:
+        orig_node = parse_xml(f"<div>{term_en}</div>")
+    except BaseException as error:
+        # print(repr(closest_term))
+        print(repr(term_en))
+        # from odoo.addons.ultimate_transfer.models.tools import tools_ut;tools_ut.Debug.stack(e)
+        import pdb; pdb.set_trace()  # Debug the er
+        xxx = 3
 
     def same_struct_iter(left, right):
         if left.tag != right.tag or len(left) != len(right):

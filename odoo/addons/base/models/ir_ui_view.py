@@ -915,8 +915,23 @@ actual arch.
         # all extensions have been applied.
         queue = collections.deque(sorted(hierarchy[self], key=lambda v: v.mode))
         while queue:
-            view = queue.popleft()
-            arch = etree.fromstring(view.arch or '<data/>')
+            try:
+             view = queue.popleft()
+             arch = etree.fromstring(view.arch or '<data/>')
+            except TypeError as error:
+                _logger.warning(
+                    "APT-Skipping view %s (id %s) in _combine: arch is invalid (%s). "
+                    "Likely transient during migration.",
+                    getattr(view, 'name', '?'), view.id, error,
+                )
+                import pdb; pdb.set_trace()  # Debug the er
+                continue  # passe à la vue suivante dans la queue, sans l'appliquer
+            except BaseException as error:
+                # print(repr(closest_term))
+                # print(repr(term_en))
+                # from odoo.addons.ultimate_transfer.models.tools import tools_ut;tools_ut.Debug.stack(error)
+                import pdb; pdb.set_trace()  # Debug the er
+                xxx = 3
             if view.env.context.get('inherit_branding'):
                 view.inherit_branding(arch)
             self._add_validation_flag(combined_arch, view, arch)
