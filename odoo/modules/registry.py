@@ -196,6 +196,8 @@ class Registry(Mapping):
 
     def __getitem__(self, model_name):
         """ Return the model with the given name or raise KeyError if it doesn't exist."""
+        # if model_name not in self.models:
+        #     import pdb; pdb.set_trace()  # Debug the missing 
         return self.models[model_name]
 
     def __call__(self, model_name):
