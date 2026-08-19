@@ -106,6 +106,7 @@ def dispatch_rpc(service_name, method, params):
     in a upper layer.
     """
     try:
+        import pdb; pdb.set_trace()
         rpc_request_flag = rpc_request.isEnabledFor(logging.DEBUG)
         rpc_response_flag = rpc_response.isEnabledFor(logging.DEBUG)
         if rpc_request_flag or rpc_response_flag:
@@ -513,8 +514,10 @@ def route(route=None, **kw):
 
     """
     routing = kw.copy()
+    import pdb; pdb.set_trace()
     assert 'type' not in routing or routing['type'] in ("http", "json")
     def decorator(f):
+        import pdb; pdb.set_trace()
         if route:
             if isinstance(route, list):
                 routes = route

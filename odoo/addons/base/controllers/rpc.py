@@ -57,6 +57,7 @@ class RPC(Controller):
         backwards-compatibility.
         """
         try:
+            import pdb; pdb.set_trace()
             response = self._xmlrpc(service)
         except Exception as error:
             response = wsgi_server.xmlrpc_handle_exception_string(error)
@@ -66,6 +67,7 @@ class RPC(Controller):
     def xmlrpc_2(self, service):
         """XML-RPC service that returns faultCode as int."""
         try:
+            import pdb; pdb.set_trace()
             response = self._xmlrpc(service)
         except Exception as error:
             response = wsgi_server.xmlrpc_handle_exception_int(error)

@@ -5,7 +5,9 @@
     'name': 'Products & Pricelists',
     'version': '1.2',
     'category': 'Sales',
-    'depends': ['base', 'decimal_precision', 'mail', 'uom'],
+    'depends': ['base',
+        # pb à la migration en v13 : 'decimal_precision',
+        'mail', 'uom'],
     'description': """
 This is the base module for managing products and pricelists in Odoo.
 ========================================================================

@@ -33,6 +33,7 @@ class Help(Command):
 
 def main():
     args = sys.argv[1:]
+    import pdb; pdb.set_trace()
 
     # The only shared option is '--addons-path=' needed to discover additional
     # commands from modules
