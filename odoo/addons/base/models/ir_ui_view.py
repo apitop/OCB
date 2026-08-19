@@ -380,7 +380,8 @@ actual arch.
     def _check_xml(self):
         # Sanity checks: the view should not break anything upon rendering!
         # Any exception raised below will cause a transaction rollback.
-        self = self.with_context(check_field_names=True)
+        if self._context.get('load_all_views'):
+            return True
         for view in self:
             view_arch = etree.fromstring(view.arch.encode('utf-8'))
             view._valid_inheritance(view_arch)
@@ -393,6 +394,7 @@ actual arch.
                 try:
                     self.postprocess_and_fields(view.model, view_doc, view.id)
                 except ValueError as e:
+                    import pdb;pdb.set_trace()
                     raise ValidationError("%s\n\n%s" % (_("Error while validating view"), tools.ustr(e)))
                 # RNG-based validation is not possible anymore with 7.0 forms
                 view_docs = [view_doc]
@@ -611,6 +613,7 @@ actual arch.
             'msg': message,
         }
         _logger.info(message)
+        import pdb;pdb.set_trace()
         raise ValueError(message)
 
     def locate_node(self, arch, spec):

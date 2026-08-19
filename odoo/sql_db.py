@@ -235,20 +235,228 @@ class Cursor(object):
             _logger.warning(msg)
             self._close(True)
 
+    def _get_foreign_keys(self, ptable_name): # , pkey_column_name):
+        """ get the list of foreign keys on a table
+            support only mono-column keys
+            and the foreign key must be on a predicted and unique column of the ptable """
+        # select to find foreign keys
+        lselect_fk = """select distinct
+       fk_tco.constraint_name as fk_constraint_name,
+       fk_ccu.table_name as fk_table_name,
+       fk_ccu.column_name as fk_column_name,
+       pk_ccu.table_name as pk_table_name,
+       pk_ccu.column_name as pk_column_name
+from information_schema.referential_constraints rco
+join information_schema.table_constraints fk_tco
+          on rco.constraint_name = fk_tco.constraint_name
+          and rco.constraint_schema = fk_tco.table_schema
+left join information_schema.key_column_usage fk_ccu
+          on fk_ccu.constraint_name = fk_tco.constraint_name
+          and fk_ccu.constraint_schema = fk_tco.table_schema
+left join information_schema.constraint_column_usage pk_ccu
+          on pk_ccu.constraint_name = fk_tco.constraint_name
+          and pk_ccu.constraint_schema = fk_tco.table_schema
+where pk_ccu.table_name = %s -- enter table name here
+      and pk_ccu.table_schema = 'public'
+order by fk_constraint_name, fk_table_name, fk_column_name;"""
+        self._obj.execute(lselect_fk, (ptable_name, ) )
+        res = self.fetchall()
+        # check fk name are unique (otherwize I got multi-column foreign keys and I don't manage that here)
+        lcheck_unicity = {}
+        for fk in res:
+            fk_name = fk[0]
+            pk_column_name = fk[-1]
+            if fk_name in lcheck_unicity:
+                raise Exception(f"{fk_name} is a multi column foreign key and I don't manage that here")
+            """
+            if pk_column_name != pkey_column_name:
+                raise Exception(f"pk_column_name({pk_column_name}) != pkey_column_name({pkey_column_name}) and I don't manage that here"
+                            % (pk_column_name, pkey_column_name) )
+            """
+        return res
+
+    regex_del_txt = '^DELETE FROM ([^ ]+) WHERE ([^ ]+) IN %s *(|;)$'
+    regex_del = re.compile(regex_del_txt)
+
+    def _verif_and_delete_foreign_key_dependencies_rec(self, del_table_name, del_column_name, del_values):
+        """ remove a line from a table
+            after having removed recursively all the line of other table which depend on this record by foreign keys (a kind of delete cascade forced) """
+        lselect_sql = 'select 1 from %s where %s in %%s;' % (del_table_name, del_column_name)
+        try:
+            #import pdb;pdb.set_trace()
+            self._obj.execute(lselect_sql, (del_values, ))
+            lres = self.fetchall()
+        except BaseException as error:
+            import pdb;pdb.set_trace()
+            xxx = 3
+            if xxx:
+                raise
+        if lres:
+            # if no record, there is nothing to do !
+            lforeign_keys = self._get_foreign_keys(del_table_name)
+            for fk in lforeign_keys:
+                fk_table_name = fk[1]
+                fk_column_name = fk[2]
+                pk_table_name = fk[3]
+                pk_column_name = fk[4]
+
+                if pk_table_name != del_table_name:
+                    import pdb;pdb.set_trace()
+                    raise Exception('pk_table_name != del_table_name')
+
+                # 1st, is there any really linked value ?
+                if pk_column_name == del_column_name:
+                    # simple case : the filtering is on the id
+                    lselect_sql = 'select %s from %s where %s in %%s;' % (fk_column_name, fk_table_name, fk_column_name)
+                else:
+                    # complex case : the filtering is on another column (whatever its properties)
+                    lselect_sql = ('select a.%s from %s a join %s b on a.%s = b.%s where b.%s in %%s;' % (fk_column_name, fk_table_name,del_table_name, fk_column_name, pk_column_name, del_column_name,) )
+                    lselect_sql = ('select a.%s from %s a join %s b on a.%s = b.%s where b.%s in %%s;'
+                        % (
+                            fk_column_name,
+                            fk_table_name, del_table_name,
+                            fk_column_name, pk_column_name,
+                            del_column_name,
+                        ) )
+                try:
+                    self._obj.execute(lselect_sql, (del_values, ) )
+                    lres = self.fetchall()
+                except BaseException as error:
+                    import pdb;pdb.set_trace()
+                    xxx = 3
+                    if xxx:
+                        raise
+
+                if lres:
+                    # there is actually a foreign key so,
+                    # 2nd, try to nullify the value
+                    lselect_sql = "select i.is_nullable from information_schema.columns i where i.table_schema = 'public' and i.table_name = '%s' and i.column_name = '%s';" % (fk_table_name, fk_column_name)
+                    try:
+                        self._obj.execute(lselect_sql, () )
+                        lres_is_nullable = self.fetchall()
+                    except BaseException as error:
+                        import pdb;pdb.set_trace()
+                        xxx = 3
+                        if xxx:
+                            raise
+
+                    if lres_is_nullable[0][0] == 'YES':
+                        # is_nullable
+                        if pk_column_name == del_column_name:
+                            # simple case : the filtering is on the id
+                            lupdate_sql = 'update %s set %s = null where %s in %%s;' % (fk_table_name, fk_column_name, fk_column_name)
+                        else:
+                            # complex case : the filtering is on another column (whatever its properties)
+                            lupdate_sql = ('update %s a set %s = null from %s b where a.%s = b.%s and b.%s in %%s;' % (fk_table_name, fk_column_name, del_table_name, fk_column_name, pk_column_name, del_column_name,) )
+                            lupdate_sql = ('update %s a set %s = null from %s b where a.%s = b.%s and b.%s in %%s;'
+                                % (
+                                    fk_table_name, fk_column_name,
+                                    del_table_name,
+                                    fk_column_name, pk_column_name,
+                                    del_column_name,
+                                ) )
+                        try:
+                            # try to nullify the foreign key
+                            self._obj.execute(lupdate_sql, (del_values, ) )
+                        except BaseException as error:
+                            # it failed,
+                            # so I forget this error and I try to remove the depending records
+                            import pdb;pdb.set_trace()
+                            raise
+
+                    else:
+                        # 3rd : the only remaining solution : delete cascade
+                        # here, search potentially for several values
+                        #import pdb;pdb.set_trace()
+                        ldel_values = tuple({ldata[0] for ldata in lres})
+                        self._verif_and_delete_foreign_key_dependencies_rec(fk_table_name, fk_column_name, ldel_values)
+
+            # remove the current line
+            #import pdb;pdb.set_trace()
+            ldelete_sql = 'delete from %s where %s in %%s;' % (del_table_name, del_column_name)
+            try:
+                self._obj.execute(ldelete_sql, (del_values, ) )
+            except BaseException as error:
+                import pdb;pdb.set_trace()
+                xxx = 3
+                if xxx:
+                    raise
+
+    def _verif_and_delete_foreign_key_dependencies(self, delete_from_sql, params):
+        """ supprime récursivement tous les records qui dépendent de celui qui est initialement à supprimer """
+        # params unique
+        if params is None:
+            raise Exception('params is None')
+        if not isinstance(params, (tuple, list)):
+            import pdb;pdb.set_trace()
+            raise Exception('Not managed yet')
+        if len(params) > 1:
+            import pdb;pdb.set_trace()
+            raise Exception('Suprise : I was not waiting for that (-:')
+        lparam = params[0] if len(params) else ()
+
+        if lparam:
+            # otherwize, there is not record to check !
+            if not isinstance(lparam, (tuple, )):
+                import pdb;pdb.set_trace()
+                raise Exception('Not managed yet')
+
+            if False:
+                lparam = lparam[0] if isinstance(lparam, (tuple, list)) else lparam
+                while isinstance(lparam, (tuple, list)):
+                    """
+                    je supprime ce test car j'ai des cas où on m'envoie une liste d'id
+                    mais dans ce cas, je n'ai jamais de pbs de dependencies donc ce code ne fait rien, donc je peux tout à fait ne m'occuper que du premier paramètre dans tous les cas
+                    if len(lparam) != 1:
+                        raise Exception('len(lparam) != 1')
+                    """
+                    if not lparam:
+                        # idem : si la liste est vide, je n'ai rien à faire de toute façon, donc return
+                        return
+                    lparam = lparam[0] if isinstance(lparam, (tuple, list)) else lparam
+            if isinstance(lparam, dict):
+                raise Exception('isinstance(lparam, dict)')
+
+            # get table and foreign key column name
+            regex_del_num_table_name = 1
+            regex_del_num_column_name = 2
+            lmatch = Cursor.regex_del.match(delete_from_sql)
+            if not lmatch:
+                raise Exception(f"Delete instruction <{delete_from_sql}> doesn't match the pattern <{regex_del_txt}>")
+            ltable_name = lmatch.group(regex_del_num_table_name)
+            lcolumn_name = lmatch.group(regex_del_num_column_name)
+
+            # delete cascade the record
+            self._verif_and_delete_foreign_key_dependencies_rec(ltable_name, lcolumn_name, lparam)
+
     @check
     def execute(self, query, params=None, log_exceptions=None):
         if params and not isinstance(params, (tuple, list, dict)):
             # psycopg2's TypeError is not clear if you mess up the params
             raise ValueError("SQL query parameters should be a tuple, list or dict; got %r" % (params,))
-
         if self.sql_log:
             encoding = psycopg2.extensions.encodings[self.connection.encoding]
             _logger.debug("query: %s", self._obj.mogrify(query, params).decode(encoding, 'replace'))
         now = time.time()
         try:
             params = params or None
+            # BIG ISSUE : after any sql error, I can only rollback the transaction, so I must always preventively avoid the errors !
+            if Cursor.regex_del.match(query): #query example : DELETE FROM ir_model WHERE id IN %s
+                # preventive delete cascade to avoid a potential psycopg2.errors.ForeignKeyViolation
+                try:
+                    self._verif_and_delete_foreign_key_dependencies(query, params)
+                except Exception as error:
+                    import pdb;pdb.set_trace()
+                    raise
+                # the delete is done, but so the following execute() will do nothing and no error
             res = self._obj.execute(query, params)
         except Exception as e:
+            """ generally, the operation failed because of a foreign key violation
+                so, I try a second solution by removing by code all the reference to the record
+                it is a kind of delete cascade by python code
+                and if I do this workaround, I forget the initial exception """
+            if isinstance(e, psycopg2.errors.ForeignKeyViolation):
+                import pdb;pdb.set_trace()
             if self._default_log_exceptions if log_exceptions is None else log_exceptions:
                 _logger.error("bad query: %s\nERROR: %s", tools.ustr(self._obj.query or query), e)
             raise
